@@ -1,0 +1,7 @@
+{
+  "name": "Whispera",
+  "private": true,
+  "scripts": {
+    "dev": "npm run dev --prefix electron-app"
+  }
+}

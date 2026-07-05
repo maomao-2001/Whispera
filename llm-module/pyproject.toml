@@ -1,0 +1,46 @@
+[build-system]
+requires = ["setuptools>=64", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "llm-module"
+version = "0.1.0"
+description = "Lightweight llama-server client and proxy service for local LLM projects"
+readme = "README.md"
+license = "Apache-2.0"
+requires-python = ">=3.10"
+dependencies = []
+keywords = ["llm", "llama.cpp", "llama-server", "local-llm", "openai-compatible"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+]
+
+[project.optional-dependencies]
+server = [
+    "fastapi",
+    "uvicorn[standard]",
+    "websockets",
+]
+dev = [
+    "pytest>=6.0",
+]
+
+[project.scripts]
+llm-module-server = "llm_module.service:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+include = ["llm_module*"]
+
+[tool.setuptools.package-dir]
+"" = "src"
+
+[tool.black]
+line-length = 120
+target-version = ["py310"]

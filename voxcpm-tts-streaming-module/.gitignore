@@ -1,0 +1,12 @@
+__pycache__/
+*.pyc
+
+models/
+tts_test.wav
+out.wav
+
+.venv/
+venv/
+.env
+
+*.egg-info/

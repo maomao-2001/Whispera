@@ -1,0 +1,3 @@
+# Optional dependencies for the mem0 SDK integration.
+# This installs the local mem0 checkout without downloading any model weights.
+-e ./mem0

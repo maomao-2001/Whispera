@@ -1,0 +1,2 @@
+model/vad/*.onnx filter=lfs diff=lfs merge=lfs -text
+model/speaker/*.pt filter=lfs diff=lfs merge=lfs -text

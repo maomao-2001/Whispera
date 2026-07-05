@@ -1,0 +1,101 @@
+{
+  "name": "whispera-desktop",
+  "productName": "Whispera",
+  "version": "0.1.0",
+  "description": "Electron frontend for the realtime voice assistant refactor.",
+  "private": true,
+  "main": "main.js",
+  "type": "commonjs",
+  "scripts": {
+    "dev": "electron .",
+    "start": "electron .",
+    "pack": "node ./scripts/ensure_compiled_backend.js && electron-builder --dir",
+    "dist": "node ./scripts/ensure_compiled_backend.js && electron-builder --dir"
+  },
+  "dependencies": {
+    "three": "^0.179.1"
+  },
+  "devDependencies": {
+    "electron": "^31.0.0",
+    "electron-builder": "^24.13.3"
+  },
+  "build": {
+    "appId": "com.whispera.desktop",
+    "productName": "Whispera",
+    "directories": {
+      "output": "dist",
+      "buildResources": "build"
+    },
+    "files": [
+      "main.js",
+      "preload.js",
+      "build/**/*",
+      "renderer/**/*",
+      "package.json"
+    ],
+    "asar": true,
+    "extraResources": [
+      {
+        "from": "../build/compiled-backend/realtime",
+        "to": "app-bundle/realtime"
+      },
+      {
+        "from": "../build/compiled-backend/llm-module",
+        "to": "app-bundle/llm-module",
+        "filter": [
+          "**/*",
+          "!llama/bin{,/**/*}"
+        ]
+      },
+      {
+        "from": "../torchaudio",
+        "to": "app-bundle/torchaudio"
+      },
+      {
+        "from": "../build/compiled-backend/voxcpm-tts-streaming-module",
+        "to": "app-bundle/voxcpm-tts-streaming-module",
+        "filter": [
+          "**/*",
+          "!models{,/**/*}"
+        ]
+      },
+      {
+        "from": "../requirements.txt",
+        "to": "app-bundle/requirements.txt"
+      },
+      {
+        "from": "../requirements-mem0.txt",
+        "to": "app-bundle/requirements-mem0.txt"
+      },
+      {
+        "from": "../model/vad",
+        "to": "app-bundle/model/vad"
+      },
+      {
+        "from": "../runtime",
+        "to": "app-bundle/runtime",
+        "filter": [
+          "**/*",
+          "!*.zip"
+        ]
+      }
+    ],
+    "extraFiles": [
+      {
+        "from": "../distribution-assets",
+        "to": "assets"
+      }
+    ],
+    "win": {
+      "icon": "build/icon.ico",
+      "target": [
+        {
+          "target": "dir",
+          "arch": [
+            "x64"
+          ]
+        }
+      ]
+    }
+  }
+}
