@@ -247,7 +247,7 @@ GET http://127.0.0.1:8003/health
   "session_id": "demo-session-001",
   "request_id": "req-001",
   "text": "你好，这是一次流式 TTS 验证。",
-  "prompt_audio_path": "D:/audio/reference.wav",
+  "prompt_audio_path": "/path/to/reference.wav",
   "prompt_text": "你好，这是参考音频对应的文本。",
   "cfg_value": 2.0,
   "inference_timesteps": 10,
@@ -255,8 +255,9 @@ GET http://127.0.0.1:8003/health
   "max_len": 4096,
   "normalize": false,
   "denoise": false,
-  "streaming_prefix_len": 3,
+  "streaming_prefix_len": 4,
   "streaming_emit_interval": 4,
+  "reference_wav_path": "/path/to/voice_clone_reference.wav",
   "lora_selection": "",
   "lora_path": ""
 }
@@ -270,14 +271,15 @@ GET http://127.0.0.1:8003/health
 - `text`：必填，待合成文本
 - `prompt_audio_path`：可选，参考音频路径
 - `prompt_text`：可选，参考音频对应文本
+- `reference_wav_path`：可选，VoxCPM2 声音克隆参考音频路径
 - `cfg_value`：可选，默认 `2.0`
 - `inference_timesteps`：可选，默认 `10`
 - `min_len`：可选，默认 `2`
 - `max_len`：可选，默认 `4096`
 - `normalize`：可选，默认 `false`
 - `denoise`：可选，默认 `false`
-- `streaming_prefix_len`：可选，默认 `3`
-- `streaming_emit_interval`：可选，默认 `4`
+- `streaming_prefix_len`：可选，默认 `4`
+- `streaming_emit_interval`：可选，默认 `4`；VoxCPM2 会忽略该字段
 - `lora_selection` / `lora_path`：可选，LoRA 相关参数
 
 注意：

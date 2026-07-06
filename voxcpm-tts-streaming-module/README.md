@@ -29,7 +29,7 @@ Use the existing conda environment:
 
 ```powershell
 conda activate voxcpm
-cd D:\project\voxcpm-tts-streaming
+cd <repo>
 pip install -e ".[streaming]"
 ```
 
@@ -42,7 +42,7 @@ python -c "import voxcpm; print(voxcpm.__file__)"
 Expected output:
 
 ```text
-D:\project\voxcpm-tts-streaming\src\voxcpm\__init__.py
+<repo>\src\voxcpm\__init__.py
 ```
 
 ## Model Files
@@ -52,7 +52,7 @@ D:\project\voxcpm-tts-streaming\src\voxcpm\__init__.py
 Default local model directory:
 
 ```text
-models/openbmb__VoxCPM1.5
+models/openbmb__VoxCPM2
 ```
 
 Required files:
@@ -84,7 +84,7 @@ If it is already cached in the environment, it will be loaded directly.
 
 ```powershell
 conda activate voxcpm
-cd D:\project\voxcpm-tts-streaming
+cd <repo>
 python -m voxcpm.streaming_service --host 127.0.0.1 --port 8000
 ```
 
@@ -98,7 +98,7 @@ Default WebSocket path:
 
 ```powershell
 conda activate voxcpm
-cd D:\project\voxcpm-tts-streaming
+cd <repo>
 python -m voxcpm.asr_service --host 127.0.0.1 --port 8003
 ```
 
@@ -126,7 +126,7 @@ Expected fields:
 
 ```powershell
 conda activate voxcpm
-python -c "from voxcpm.core import VoxCPM; import soundfile as sf; m=VoxCPM(voxcpm_model_path='models/openbmb__VoxCPM1.5', enable_denoiser=False); wav=m.generate(text='Hello, this is a minimal TTS check.'); sf.write('tts_test.wav', wav, m.tts_model.sample_rate); print('ok -> tts_test.wav')"
+python -c "from voxcpm.core import VoxCPM; import soundfile as sf; m=VoxCPM(voxcpm_model_path='models/openbmb__VoxCPM2', enable_denoiser=False); wav=m.generate(text='Hello, this is a minimal TTS check.'); sf.write('tts_test.wav', wav, m.tts_model.sample_rate); print('ok -> tts_test.wav')"
 ```
 
 This should create:
@@ -150,7 +150,7 @@ python -c "from voxcpm.asr import SenseVoiceASR; a=SenseVoiceASR(); r=a.transcri
 from voxcpm.core import VoxCPM
 
 model = VoxCPM(
-    voxcpm_model_path="models/openbmb__VoxCPM1.5",
+    voxcpm_model_path="models/openbmb__VoxCPM2",
     enable_denoiser=False,
 )
 

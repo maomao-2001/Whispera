@@ -22,6 +22,7 @@ class TTSRequestOptions:
     lora_selection: str | None = None
     prompt_audio_path: str | None = None
     prompt_text: str | None = None
+    reference_wav_path: str | None = None
     cfg_value: float | None = None
     inference_timesteps: int | None = None
     seed: int | None = None

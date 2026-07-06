@@ -16,7 +16,7 @@ Whispera/
     asr/
       SenseVoiceSmall/
     tts/
-      openbmb__VoxCPM1.5/
+      openbmb__VoxCPM2/
     llm/
     lora/
     reference/
@@ -166,7 +166,7 @@ npm run dist
 
 - `assets/llama-bin/`
 - `assets/asr/SenseVoiceSmall/`
-- `assets/tts/openbmb__VoxCPM1.5/`
+- `assets/tts/openbmb__VoxCPM2/`
 - `assets/lora/`
 
 `assets/llm/` 依然可以选择：

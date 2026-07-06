@@ -101,7 +101,7 @@ assets/
   asr/
     SenseVoiceSmall/
   tts/
-    openbmb__VoxCPM1.5/
+    openbmb__VoxCPM2/
   lora/
   reference/
 ```

@@ -21,7 +21,11 @@ const DEFAULT_LLM_MODELS_ROOT = path.join(ASSETS_ROOT, "llm");
 const DEFAULT_MEMORY_MODELS_ROOT = path.join(ASSETS_ROOT, "embedding");
 const DEFAULT_ASR_MODEL_PATH = path.join(ASSETS_ROOT, "asr", "SenseVoiceSmall");
 const DEFAULT_VAD_MODEL_PATH = path.join(REPO_ROOT, "model", "vad", "silero_vad.onnx");
-const DEFAULT_TTS_MODEL_PATH = path.join(ASSETS_ROOT, "tts", "openbmb__VoxCPM1.5");
+const DEFAULT_TTS_MODEL_PATH_CANDIDATES = [
+  path.join(ASSETS_ROOT, "tts", "openbmb__VoxCPM2"),
+  path.join(ASSETS_ROOT, "tts", "openbmb__VoxCPM1.5")
+];
+const DEFAULT_TTS_MODEL_PATH = DEFAULT_TTS_MODEL_PATH_CANDIDATES.find((candidate) => fs.existsSync(candidate)) || DEFAULT_TTS_MODEL_PATH_CANDIDATES[0];
 const configuredStartTimeoutMs = Number(process.env.MINIMIND_SERVICE_START_TIMEOUT_MS || 180000);
 const DEFAULT_START_TIMEOUT_MS = Number.isFinite(configuredStartTimeoutMs) ? configuredStartTimeoutMs : 180000;
 const WINDOW_ICON_PATH = path.join(__dirname, "build", "icon.ico");

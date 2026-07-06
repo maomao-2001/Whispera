@@ -29,7 +29,7 @@
 
 ```powershell
 conda activate voxcpm
-cd D:\project\voxcpm-tts-streaming
+cd <repo>
 pip install -e ".[streaming]"
 ```
 
@@ -42,7 +42,7 @@ python -c "import voxcpm; print(voxcpm.__file__)"
 期望输出类似：
 
 ```text
-D:\project\voxcpm-tts-streaming\src\voxcpm\__init__.py
+<repo>\src\voxcpm\__init__.py
 ```
 
 ## 模型文件
@@ -52,7 +52,7 @@ D:\project\voxcpm-tts-streaming\src\voxcpm\__init__.py
 默认本地模型目录：
 
 ```text
-models/openbmb__VoxCPM1.5
+models/openbmb__VoxCPM2
 ```
 
 至少需要以下文件：
@@ -88,7 +88,7 @@ iic/SenseVoiceSmall
 
 ```powershell
 conda activate voxcpm
-cd D:\project\voxcpm-tts-streaming
+cd <repo>
 
 ////////首次启动
 pip uninstall -y voxcpm
@@ -108,7 +108,7 @@ python -m voxcpm.streaming_service --host 127.0.0.1 --port 8000
 
 ```powershell
 conda activate voxcpm
-cd D:\project\voxcpm-tts-streaming
+cd <repo>
 python -m voxcpm.asr_service --host 127.0.0.1 --port 8003
 ```
 
@@ -136,7 +136,7 @@ curl http://127.0.0.1:8003/health
 
 ```powershell
 conda activate voxcpm
-python -c "from voxcpm.core import VoxCPM; import soundfile as sf; m=VoxCPM(voxcpm_model_path='models/openbmb__VoxCPM1.5', enable_denoiser=False); wav=m.generate(text='你好啊，这是一次最小版 TTS 验证。'); sf.write('tts_test.wav', wav, m.tts_model.sample_rate); print('ok -> tts_test.wav')"
+python -c "from voxcpm.core import VoxCPM; import soundfile as sf; m=VoxCPM(voxcpm_model_path='models/openbmb__VoxCPM2', enable_denoiser=False); wav=m.generate(text='你好啊，这是一次最小版 TTS 验证。'); sf.write('tts_test.wav', wav, m.tts_model.sample_rate); print('ok -> tts_test.wav')"
 ```
 
 成功后会生成：
@@ -160,7 +160,7 @@ python -c "from voxcpm.asr import SenseVoiceASR; a=SenseVoiceASR(); r=a.transcri
 from voxcpm.core import VoxCPM
 
 model = VoxCPM(
-    voxcpm_model_path="models/openbmb__VoxCPM1.5",
+    voxcpm_model_path="models/openbmb__VoxCPM2",
     enable_denoiser=False,
 )
 

@@ -40,8 +40,15 @@ def _repo_root() -> Path:
     return Path(__file__).resolve().parents[2]
 
 
+def _app_root() -> Path:
+    return _repo_root().parent
+
+
 def resolve_default_model_path() -> Optional[str]:
     candidates = [
+        _repo_root() / "models" / "openbmb__VoxCPM2",
+        _repo_root() / "models" / "VoxCPM2",
+        _app_root() / "assets" / "tts" / "openbmb__VoxCPM2",
         _repo_root() / "models" / "openbmb__VoxCPM1.5",
         _repo_root() / "models" / "VoxCPM1.5",
     ]
@@ -146,13 +153,13 @@ class StreamingServiceConfig:
     host: str = "127.0.0.1"
     port: int = 8000
     model_path: Optional[str] = None
-    hf_model_id: str = "openbmb/VoxCPM1.5"
+    hf_model_id: str = "openbmb/VoxCPM2"
     cache_dir: Optional[str] = None
     local_files_only: bool = False
     load_denoiser: bool = False
     zipenhancer_model_id: str = "iic/speech_zipenhancer_ans_multiloss_16k_base"
     optimize: bool = True
-    streaming_prefix_len: int = 3
+    streaming_prefix_len: int = 4
     streaming_emit_interval: int = 4
     log_level: str = "info"
 
@@ -309,11 +316,14 @@ class StreamingTTSService:
 
         prompt_audio_path = request.get("prompt_audio_path")
         prompt_text = request.get("prompt_text")
+        reference_wav_path = request.get("reference_wav_path")
 
         if prompt_audio_path == "":
             prompt_audio_path = None
         if prompt_text == "":
             prompt_text = None
+        if reference_wav_path == "":
+            reference_wav_path = None
 
         self.apply_lora_selection(request.get("lora_path") or request.get("lora_selection"))
         model = self.get_model()
@@ -322,6 +332,7 @@ class StreamingTTSService:
             text=text,
             prompt_wav_path=prompt_audio_path,
             prompt_text=prompt_text,
+            reference_wav_path=reference_wav_path,
             cfg_value=_to_float(request.get("cfg_value"), 2.0),
             inference_timesteps=_to_int(request.get("inference_timesteps"), 10),
             min_len=_to_int(request.get("min_len"), 2),
@@ -330,6 +341,7 @@ class StreamingTTSService:
             denoise=_to_bool(request.get("denoise"), False),
             streaming_prefix_len=_to_int(request.get("streaming_prefix_len"), self.config.streaming_prefix_len),
             streaming_emit_interval=_to_int(request.get("streaming_emit_interval"), self.config.streaming_emit_interval),
+            seed=_to_int(request.get("seed"), None) if request.get("seed") not in {"", None} else None,
             retry_badcase=False,
         )
 
@@ -610,7 +622,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--hf-model-id",
         type=str,
-        default="openbmb/VoxCPM1.5",
+        default="openbmb/VoxCPM2",
         help="Hugging Face model id used when local model path is not available",
     )
     parser.add_argument("--cache-dir", type=str, default=None, help="Hugging Face cache directory")
@@ -626,7 +638,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--streaming-prefix-len",
         type=int,
-        default=3,
+        default=4,
         help="Streaming decode context window in patches",
     )
     parser.add_argument(

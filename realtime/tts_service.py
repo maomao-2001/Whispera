@@ -45,10 +45,17 @@ class VoxCpmTtsService:
     def _resolve_model_path(self) -> str:
         if self.config.model_path:
             return self.config.model_path
-        default_path = REPO_ROOT / "voxcpm-tts-streaming-module" / "models" / "openbmb__VoxCPM1.5"
-        if not default_path.exists():
-            raise FileNotFoundError(f"VoxCPM model path not found: {default_path}")
-        return str(default_path)
+        candidates = [
+            REPO_ROOT / "assets" / "tts" / "openbmb__VoxCPM2",
+            REPO_ROOT / "voxcpm-tts-streaming-module" / "models" / "openbmb__VoxCPM2",
+            REPO_ROOT / "voxcpm-tts-streaming-module" / "models" / "VoxCPM2",
+            REPO_ROOT / "assets" / "tts" / "openbmb__VoxCPM1.5",
+            REPO_ROOT / "voxcpm-tts-streaming-module" / "models" / "openbmb__VoxCPM1.5",
+        ]
+        for candidate in candidates:
+            if candidate.exists():
+                return str(candidate)
+        raise FileNotFoundError(f"VoxCPM model path not found: {candidates[0]}")
 
     def _resolve_lora_root(self) -> Path:
         if self.config.lora_root:
@@ -177,13 +184,24 @@ class VoxCpmTtsService:
 
         return str(candidate), final_prompt_text
 
+    def _resolve_reference_wav_path(self, options: TTSRequestOptions | None = None) -> str | None:
+        request_options = options or TTSRequestOptions()
+        if not request_options.reference_wav_path:
+            return None
+        candidate = Path(request_options.reference_wav_path).expanduser()
+        if not candidate.exists():
+            return None
+        return str(candidate)
+
     def warmup(self, options: TTSRequestOptions | None = None, force: bool = False) -> dict[str, float | bool | int | None]:
         request_options = options or TTSRequestOptions()
         resolved_prompt_wav, resolved_prompt_text = self._resolve_reference_inputs(request_options)
+        resolved_reference_wav = self._resolve_reference_wav_path(request_options)
         signature = (
             request_options.lora_selection,
             resolved_prompt_wav,
             resolved_prompt_text,
+            resolved_reference_wav,
         )
         if self._warmup_result is not None and self._warmup_signature == signature and not force:
             return {
@@ -210,6 +228,7 @@ class VoxCpmTtsService:
             lora_selection=request_options.lora_selection,
             prompt_audio_path=resolved_prompt_wav,
             prompt_text=resolved_prompt_text,
+            reference_wav_path=resolved_reference_wav,
             cfg_value=request_options.cfg_value,
             inference_timesteps=request_options.inference_timesteps,
             seed=request_options.seed,
@@ -245,6 +264,7 @@ class VoxCpmTtsService:
             prompt_wav_path=prompt_wav_path,
             prompt_text=prompt_text,
         )
+        final_reference_wav = self._resolve_reference_wav_path(request_options)
         cfg_value = request_options.cfg_value if request_options.cfg_value is not None else self.config.cfg_value
         inference_timesteps = (
             request_options.inference_timesteps
@@ -259,10 +279,12 @@ class VoxCpmTtsService:
             text=text,
             prompt_wav_path=final_prompt_wav,
             prompt_text=final_prompt_text,
+            reference_wav_path=final_reference_wav,
             cfg_value=float(cfg_value),
             inference_timesteps=int(inference_timesteps),
             min_len=self.config.min_len,
             max_len=self.config.max_len,
             normalize=self.config.normalize,
             denoise=self.config.denoise,
+            seed=request_options.seed,
         )
