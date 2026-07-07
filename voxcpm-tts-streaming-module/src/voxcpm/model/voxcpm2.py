@@ -1012,6 +1012,7 @@ class VoxCPM2Model(nn.Module):
         cfg_value: float = 2.0,
         streaming: bool = False,
         streaming_prefix_len: int = 4,
+        stop_check_interval: int = 4,
     ) -> Generator[Tuple[torch.Tensor, Union[torch.Tensor, List[torch.Tensor]]], None, None]:
         """Core inference method for audio generation.
 
@@ -1085,6 +1086,15 @@ class VoxCPM2Model(nn.Module):
         self.residual_lm.kv_cache.fill_caches(residual_kv_cache_tuple)
         residual_hidden = residual_enc_outputs[:, -1, :]
 
+        # Accumulate the stop signal on-device and only sync to CPU every
+        # ``stop_check_interval`` steps. Reading the flag every step forces a
+        # GPU->CPU sync that stalls the CUDA-graph pipeline under torch.compile.
+        # The OR-accumulator makes detection robust to a flickering stop head;
+        # the trade-off is that a stop may be noticed up to (interval-1) patches
+        # late (extra tail audio). Set stop_check_interval=1 for exact stopping.
+        stop_check_interval = max(1, int(stop_check_interval))
+        stop_accum = torch.zeros((), dtype=torch.bool, device=lm_hidden.device)
+
         for i in tqdm(range(max_len)):
             dit_hidden_1 = self.lm_to_dit_proj(lm_hidden)  # [b, h_dit]
             dit_hidden_2 = self.res_to_dit_proj(residual_hidden)  # [b, h_dit]
@@ -1115,9 +1125,14 @@ class VoxCPM2Model(nn.Module):
                 if len(pred_feat_seq) > streaming_prefix_len:
                     pred_feat_seq = pred_feat_seq[-streaming_prefix_len:]
 
-            stop_flag = self.stop_head(self.stop_actn(self.stop_proj(lm_hidden))).argmax(dim=-1)[0].cpu().item()
-            if i > min_len and stop_flag == 1:
-                break
+            # Compute the stop signal on-device and OR-accumulate it. Only sync
+            # to CPU every ``stop_check_interval`` steps to avoid a per-step
+            # GPU->CPU stall that would break the CUDA-graph pipeline.
+            step_stop = self.stop_head(self.stop_actn(self.stop_proj(lm_hidden))).argmax(dim=-1)[0].bool()
+            if i > min_len:
+                stop_accum = stop_accum | step_stop
+                if (i % stop_check_interval == 0) and bool(stop_accum.item()):
+                    break
 
             lm_hidden = self.base_lm.forward_step(
                 curr_embed[:, 0, :], torch.tensor([self.base_lm.kv_cache.step()], device=curr_embed.device)
