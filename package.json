@@ -2,6 +2,8 @@
   "name": "Whispera",
   "private": true,
   "scripts": {
-    "dev": "npm run dev --prefix electron-app"
+    "dev": "npm run dev --prefix electron-app",
+    "setup:assets": "python scripts/download_assets.py",
+    "verify:assets": "python scripts/download_assets.py --verify-only"
   }
 }

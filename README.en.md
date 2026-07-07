@@ -84,11 +84,25 @@ Remove-Item Env:ELECTRON_RUN_AS_NODE -ErrorAction SilentlyContinue
 
 ### 2. Prepare local assets
 
-The following large assets are not included in the Git repository and must be prepared manually:
+The following large assets are not included in the Git repository. You can download them into `assets/` with one command:
 
-- Asset package download: <https://pan.quark.cn/s/e3c9253ba232?pwd=TLpM>
-- Extraction code: `TLpM`
-- After downloading, extract it to the repository root so the directory structure becomes `assets/`, `assets/llama-bin/`, `assets/llm/`, and so on.
+```powershell
+npm run setup:assets
+```
+
+This is equivalent to:
+
+```powershell
+python scripts/download_assets.py
+```
+
+The command downloads:
+
+- `llama-bin/`: the `llama-server` runtime from `ggml-org/llama.cpp` GitHub Releases
+- `asr/SenseVoiceSmall/`: SenseVoiceSmall from Hugging Face
+- `tts/openbmb__VoxCPM2/`: VoxCPM2 from Hugging Face
+- `embedding/`: `nomic-embed-text-v1.5.Q8_0.gguf` from Hugging Face
+- `lora/`, `reference/`, and `llm/`: placeholder directories only
 
 ```text
 assets/
@@ -109,9 +123,16 @@ assets/
 Notes:
 
 - `model/vad/silero_vad.onnx` is provided by this repository.
-- Other large resources such as LLM, ASR, TTS, and embedding files must be copied locally.
+- LLM GGUF files are not downloaded by default. Developers should choose their own model and put it under `assets/llm/`, or select a local GGUF file in Settings.
 - If there is only one `*.gguf` file under `assets/llm/`, Electron will use it automatically.
 - `assets/llm/` must contain at least one `*.gguf`, otherwise `llama-server` cannot start.
+- If Hugging Face is slow in your network, set `HF_ENDPOINT` to an available mirror before running the command.
+
+To verify the local assets:
+
+```powershell
+npm run verify:assets
+```
 
 ### 3. Start the development build
 

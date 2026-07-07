@@ -84,11 +84,25 @@ Remove-Item Env:ELECTRON_RUN_AS_NODE -ErrorAction SilentlyContinue
 
 ### 2. 准备本地资源
 
-下面这些大资源默认不在 Git 仓库里，需要你自行准备：
+下面这些大资源默认不在 Git 仓库里，可以通过一条命令下载到 `assets/`：
 
-- 资源包下载：<https://pan.quark.cn/s/e3c9253ba232?pwd=TLpM>
-- 提取码：`TLpM`
-- 下载后请解压到仓库根目录，使目录结构变为 `assets/`、`assets/llama-bin/`、`assets/llm/` 等。
+```powershell
+npm run setup:assets
+```
+
+等价于：
+
+```powershell
+python scripts/download_assets.py
+```
+
+这条命令会下载：
+
+- `llama-bin/`：从 `ggml-org/llama.cpp` GitHub Releases 下载 `llama-server` 运行时
+- `asr/SenseVoiceSmall/`：从 Hugging Face 下载 SenseVoiceSmall
+- `tts/openbmb__VoxCPM2/`：从 Hugging Face 下载 VoxCPM2
+- `embedding/`：从 Hugging Face 下载 `nomic-embed-text-v1.5.Q8_0.gguf`
+- `lora/`、`reference/`、`llm/`：仅创建占位目录
 
 ```text
 assets/
@@ -109,9 +123,16 @@ assets/
 说明：
 
 - `model/vad/silero_vad.onnx` 由仓库提供
-- 其余 LLM、ASR、TTS、embedding 等大资源需要本地拷贝
+- 默认不会下载 LLM GGUF，开发者需要自行选择并放入 `assets/llm/`，或在设置里选择本地 GGUF
 - 如果 `assets/llm/` 下只有一个 `*.gguf`，Electron 会自动使用它
 - `assets/llm/` 下必须至少有一个 `*.gguf`，否则 `llama-server` 无法启动
+- 如果 Hugging Face 下载较慢，可以先设置 `HF_ENDPOINT` 指向可用镜像
+
+可以只检查资源是否齐全：
+
+```powershell
+npm run verify:assets
+```
 
 ### 3. 启动开发版
 
