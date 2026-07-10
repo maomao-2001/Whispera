@@ -21,12 +21,12 @@ from .local_modules import REPO_ROOT
 from .memory_service import MemoryRuntimeConfig, RealtimeMemoryService
 
 import logging
-logger = logging.getLogger(__name__)
+logger = logging.getLogger("uvicorn.error.realtime")
 from .session_manager import ConversationState
 from .text_segmenter import StreamingTextSegmenter
 from .turn_capture import TurnCaptureRecorder
 from .tts_types import TTSRequestOptions, TTSRuntimeConfig
-from .vad_session import RealtimeSession, VADConfig
+from .vad_session import RealtimeSession, VADConfig, VADTurnTiming
 
 if TYPE_CHECKING:
     from .tts_service import VoxCpmTtsService
@@ -42,6 +42,45 @@ def _next_stream_item(stream):
 def _encode_pcm_f32(audio: np.ndarray) -> tuple[str, int]:
     chunk = np.asarray(audio, dtype=np.float32).reshape(-1)
     return base64.b64encode(chunk.tobytes()).decode("ascii"), int(chunk.size)
+
+
+def _elapsed_ms(started_at: float | None, ended_at: float | None) -> float | None:
+    if started_at is None or ended_at is None:
+        return None
+    return (ended_at - started_at) * 1000.0
+
+
+def _normalize_log_value(value: Any) -> Any:
+    if isinstance(value, float):
+        return round(value, 2)
+    return value
+
+
+def _log_turn_timing(
+    session_id: str,
+    turn_id: str | None,
+    stage: str,
+    *,
+    event_at: float | None = None,
+    speech_finished_at: float | None = None,
+    **fields: Any,
+) -> None:
+    payload: dict[str, Any] = {
+        "session_id": session_id,
+        "stage": stage,
+    }
+    if turn_id:
+        payload["turn_id"] = turn_id
+    if event_at is not None and speech_finished_at is not None:
+        # since_user_done_ms: elapsed time since the user actually finished
+        # speaking (estimated as VAD speech-end detection time minus the VAD
+        # trailing-silence window).
+        payload["since_user_done_ms"] = round((event_at - speech_finished_at) * 1000.0, 2)
+    for key, value in fields.items():
+        if value is None:
+            continue
+        payload[key] = _normalize_log_value(value)
+    logger.info("[TURN_TIMING] %s", json.dumps(payload, ensure_ascii=False, sort_keys=True))
 
 
 @dataclass
@@ -302,6 +341,7 @@ def create_app(config: RealtimeAppConfig | None = None):
             user_text: str,
             turn_id: str | None = None,
             tts_options: TTSRequestOptions | None = None,
+            turn_timing: dict[str, float | None] | None = None,
         ) -> None:
             stream = None
             full_text = ""
@@ -309,9 +349,22 @@ def create_app(config: RealtimeAppConfig | None = None):
             segmenter = StreamingTextSegmenter()
             tts_queue: asyncio.Queue[str | None] = asyncio.Queue()
             request_tts_options = tts_options or session_tts_options
+            timing = dict(turn_timing or {})
+            speech_finished_at = timing.get("speech_finished_at")
             vad_session.generating = True
             state.active_request_id = request_id
             interrupt_event.clear()
+
+            def log_timing(stage: str, event_at: float | None = None, **fields: Any) -> None:
+                _log_turn_timing(
+                    session_id,
+                    turn_id,
+                    stage,
+                    event_at=event_at,
+                    speech_finished_at=speech_finished_at,
+                    assistant_request_id=request_id,
+                    **fields,
+                )
 
             async def run_tts_worker() -> None:
                 if runtime.tts is None:
@@ -323,6 +376,23 @@ def create_app(config: RealtimeAppConfig | None = None):
                         if text is None or interrupt_event.is_set():
                             return
                         tts_request_id = f"tts-{uuid.uuid4().hex[:8]}"
+                        tts_request_started_at = perf_counter()
+                        if timing.get("tts_request_started_at") is None:
+                            timing["tts_request_started_at"] = tts_request_started_at
+                            log_timing(
+                                "tts.request_started",
+                                tts_request_started_at,
+                                tts_request_id=tts_request_id,
+                                chunk_chars=len(text),
+                                llm_first_text_to_tts_request_ms=_elapsed_ms(
+                                    timing.get("llm_first_text_at"),
+                                    tts_request_started_at,
+                                ),
+                                first_segment_to_tts_request_ms=_elapsed_ms(
+                                    timing.get("tts_first_segment_ready_at"),
+                                    tts_request_started_at,
+                                ),
+                            )
                         sample_rate = await loop.run_in_executor(
                             runtime.tts_executor, runtime.tts.sample_rate, request_tts_options
                         )
@@ -337,6 +407,18 @@ def create_app(config: RealtimeAppConfig | None = None):
                                 "text": text,
                             }
                         )
+                        audio_start_sent_at = perf_counter()
+                        if timing.get("tts_audio_start_sent_at") is None:
+                            timing["tts_audio_start_sent_at"] = audio_start_sent_at
+                            log_timing(
+                                "tts.audio_start_sent",
+                                audio_start_sent_at,
+                                tts_request_id=tts_request_id,
+                                tts_request_to_audio_start_ms=_elapsed_ms(
+                                    timing.get("tts_request_started_at"),
+                                    audio_start_sent_at,
+                                ),
+                            )
                         audio_stream = runtime.tts.stream_tts(text, options=request_tts_options)
                         chunk_index = 0
                         total_samples = 0
@@ -364,6 +446,80 @@ def create_app(config: RealtimeAppConfig | None = None):
                                     "data": encoded,
                                 }
                             )
+                            chunk_sent_at = perf_counter()
+                            if timing.get("tts_first_audio_chunk_at") is None:
+                                timing["tts_first_audio_chunk_at"] = chunk_sent_at
+                                log_timing(
+                                    "tts.first_audio_chunk_sent",
+                                    chunk_sent_at,
+                                    tts_request_id=tts_request_id,
+                                    num_samples=num_samples,
+                                    tts_request_to_first_audio_ms=_elapsed_ms(
+                                        timing.get("tts_request_started_at"),
+                                        chunk_sent_at,
+                                    ),
+                                )
+                                log_timing(
+                                    "turn.first_audio_summary",
+                                    chunk_sent_at,
+                                    # vad_tail_ms: user-finished-speech -> VAD speech_end.
+                                    vad_tail_ms=timing.get("vad_tail_ms"),
+                                    # speech_end_to_turn_start_ms: VAD speech_end -> backend
+                                    # turn task actually starts.
+                                    speech_end_to_turn_start_ms=_elapsed_ms(
+                                        timing.get("speech_end_detected_at"),
+                                        timing.get("turn_started_at"),
+                                    ),
+                                    # asr_ms: ASR transcription duration.
+                                    asr_ms=_elapsed_ms(
+                                        timing.get("asr_started_at"),
+                                        timing.get("asr_completed_at"),
+                                    ),
+                                    asr_done_to_llm_request_ms=_elapsed_ms(
+                                        timing.get("asr_completed_at"),
+                                        timing.get("llm_request_started_at"),
+                                    ),
+                                    memory_search_ms=_elapsed_ms(
+                                        timing.get("memory_search_started_at"),
+                                        timing.get("memory_search_completed_at"),
+                                    ),
+                                    # llm_request_to_first_text_ms: LLM request start ->
+                                    # first speakable text delta from the model.
+                                    llm_request_to_first_text_ms=_elapsed_ms(
+                                        timing.get("llm_request_started_at"),
+                                        timing.get("llm_first_text_at"),
+                                    ),
+                                    # llm_first_text_to_first_segment_ms: first text delta ->
+                                    # first segment that the segmenter is willing to hand to TTS.
+                                    llm_first_text_to_first_segment_ms=_elapsed_ms(
+                                        timing.get("llm_first_text_at"),
+                                        timing.get("tts_first_segment_ready_at"),
+                                    ),
+                                    first_segment_to_tts_request_ms=_elapsed_ms(
+                                        timing.get("tts_first_segment_ready_at"),
+                                        timing.get("tts_request_started_at"),
+                                    ),
+                                    tts_request_to_audio_start_ms=_elapsed_ms(
+                                        timing.get("tts_request_started_at"),
+                                        timing.get("tts_audio_start_sent_at"),
+                                    ),
+                                    # tts_request_to_first_audio_ms: TTS request start ->
+                                    # first emitted audio chunk.
+                                    tts_request_to_first_audio_ms=_elapsed_ms(
+                                        timing.get("tts_request_started_at"),
+                                        chunk_sent_at,
+                                    ),
+                                    speech_end_to_first_audio_ms=_elapsed_ms(
+                                        timing.get("speech_end_detected_at"),
+                                        chunk_sent_at,
+                                    ),
+                                    # total_to_first_audio_ms: user-finished-speech estimate ->
+                                    # first emitted audio chunk.
+                                    total_to_first_audio_ms=_elapsed_ms(
+                                        speech_finished_at,
+                                        chunk_sent_at,
+                                    ),
+                                )
                             chunk_index += 1
                         if captured_chunks:
                             full_audio = np.concatenate(captured_chunks)
@@ -411,7 +567,18 @@ def create_app(config: RealtimeAppConfig | None = None):
             try:
                 memory_context = ""
                 if runtime.memory.available:
+                    timing["memory_search_started_at"] = perf_counter()
                     memory_context = await asyncio.to_thread(runtime.memory.search_context, user_text)
+                    timing["memory_search_completed_at"] = perf_counter()
+                    log_timing(
+                        "memory.search_completed",
+                        timing["memory_search_completed_at"],
+                        memory_search_ms=_elapsed_ms(
+                            timing.get("memory_search_started_at"),
+                            timing.get("memory_search_completed_at"),
+                        ),
+                        memory_context_found=bool(memory_context),
+                    )
                     if memory_context:
                         await send_json(
                             {
@@ -422,6 +589,8 @@ def create_app(config: RealtimeAppConfig | None = None):
                             }
                         )
                 messages = state.build_messages(user_text)
+                timing["llm_request_started_at"] = perf_counter()
+                log_timing("llm.request_started", timing["llm_request_started_at"])
                 stream = runtime.llm.start_stream(messages, memory_context=memory_context)
                 reasoning_text = ""
                 while True:
@@ -436,9 +605,35 @@ def create_app(config: RealtimeAppConfig | None = None):
                         reasoning_text += reasoning_delta
                     if not text_delta:
                         continue
+                    if timing.get("llm_first_text_at") is None:
+                        timing["llm_first_text_at"] = perf_counter()
+                        log_timing(
+                            "llm.first_text_delta",
+                            timing["llm_first_text_at"],
+                            llm_request_to_first_text_ms=_elapsed_ms(
+                                timing.get("llm_request_started_at"),
+                                timing.get("llm_first_text_at"),
+                            ),
+                            text_chars=len(text_delta),
+                        )
                     full_text += text_delta
                     await send_json({"type": "assistant.delta", "request_id": request_id, "turn_id": turn_id, "text": text_delta})
                     for chunk in segmenter.feed(text_delta):
+                        if timing.get("tts_first_segment_ready_at") is None:
+                            timing["tts_first_segment_ready_at"] = perf_counter()
+                            log_timing(
+                                "tts.first_segment_ready",
+                                timing["tts_first_segment_ready_at"],
+                                chunk_chars=len(chunk),
+                                llm_request_to_first_segment_ms=_elapsed_ms(
+                                    timing.get("llm_request_started_at"),
+                                    timing.get("tts_first_segment_ready_at"),
+                                ),
+                                llm_first_text_to_first_segment_ms=_elapsed_ms(
+                                    timing.get("llm_first_text_at"),
+                                    timing.get("tts_first_segment_ready_at"),
+                                ),
+                            )
                         await tts_queue.put(chunk)
                 if not full_text.strip() and reasoning_text.strip() and not interrupt_event.is_set():
                     await send_json(
@@ -454,6 +649,22 @@ def create_app(config: RealtimeAppConfig | None = None):
                     return
                 final_tts_chunk = segmenter.flush()
                 if final_tts_chunk:
+                    if timing.get("tts_first_segment_ready_at") is None:
+                        timing["tts_first_segment_ready_at"] = perf_counter()
+                        log_timing(
+                            "tts.first_segment_ready",
+                            timing["tts_first_segment_ready_at"],
+                            chunk_chars=len(final_tts_chunk),
+                            llm_request_to_first_segment_ms=_elapsed_ms(
+                                timing.get("llm_request_started_at"),
+                                timing.get("tts_first_segment_ready_at"),
+                            ),
+                            llm_first_text_to_first_segment_ms=_elapsed_ms(
+                                timing.get("llm_first_text_at"),
+                                timing.get("tts_first_segment_ready_at"),
+                            ),
+                            flushed_at_stream_end=True,
+                        )
                     await tts_queue.put(final_tts_chunk)
                 await tts_queue.put(None)
                 await tts_task
@@ -512,15 +723,68 @@ def create_app(config: RealtimeAppConfig | None = None):
                 vad_session.interrupt = False
                 state.active_request_id = None
 
-        async def run_audio_turn(samples: np.ndarray, tts_options: TTSRequestOptions | None = None) -> None:
+        async def run_audio_turn(
+            samples: np.ndarray,
+            vad_timing: VADTurnTiming | None = None,
+            tts_options: TTSRequestOptions | None = None,
+        ) -> None:
             handed_off_to_llm = False
             turn_id = f"turn-{uuid.uuid4().hex[:8]}"
             user_text = ""
             capture_error: str | None = None
+            timing: dict[str, float | None] = {}
+            speech_finished_at = None
+            if vad_timing is not None:
+                speech_finished_at = vad_timing.speech_finished_at_est
+                timing["speech_finished_at"] = speech_finished_at
+                timing["speech_end_detected_at"] = vad_timing.speech_end_at
+                timing["vad_tail_ms"] = vad_timing.vad_tail_ms
+
+            def log_timing(stage: str, event_at: float | None = None, **fields: Any) -> None:
+                _log_turn_timing(
+                    session_id,
+                    turn_id,
+                    stage,
+                    event_at=event_at,
+                    speech_finished_at=speech_finished_at,
+                    **fields,
+                )
+
             try:
                 vad_session.generating = True
+                timing["turn_started_at"] = perf_counter()
+                log_timing(
+                    "turn.started",
+                    timing["turn_started_at"],
+                    vad_tail_ms=timing.get("vad_tail_ms"),
+                    speech_duration_ms=vad_timing.speech_duration_ms if vad_timing is not None else None,
+                    buffered_audio_ms=vad_timing.buffered_audio_ms if vad_timing is not None else None,
+                    speech_end_to_turn_start_ms=_elapsed_ms(
+                        timing.get("speech_end_detected_at"),
+                        timing.get("turn_started_at"),
+                    ),
+                )
+                timing["asr_started_at"] = perf_counter()
+                log_timing(
+                    "asr.started",
+                    timing["asr_started_at"],
+                    speech_end_to_asr_start_ms=_elapsed_ms(
+                        timing.get("speech_end_detected_at"),
+                        timing.get("asr_started_at"),
+                    ),
+                )
                 await send_json({"type": "asr.started", "turn_id": turn_id})
                 user_text = await asyncio.to_thread(runtime.asr.transcribe, samples)
+                timing["asr_completed_at"] = perf_counter()
+                log_timing(
+                    "asr.completed",
+                    timing["asr_completed_at"],
+                    asr_ms=_elapsed_ms(
+                        timing.get("asr_started_at"),
+                        timing.get("asr_completed_at"),
+                    ),
+                    user_text_chars=len(user_text),
+                )
                 if interrupt_event.is_set():
                     return
                 if not user_text:
@@ -530,7 +794,12 @@ def create_app(config: RealtimeAppConfig | None = None):
                 await send_json({"type": "asr.completed", "turn_id": turn_id, "text": user_text})
                 await send_json({"type": "user_text", "turn_id": turn_id, "text": user_text})
                 handed_off_to_llm = True
-                await run_text_request(user_text, turn_id=turn_id, tts_options=tts_options)
+                await run_text_request(
+                    user_text,
+                    turn_id=turn_id,
+                    tts_options=tts_options,
+                    turn_timing=timing,
+                )
             except Exception as exc:
                 capture_error = str(exc)
                 vad_session.generating = False
@@ -609,11 +878,14 @@ def create_app(config: RealtimeAppConfig | None = None):
                             await send_json({"type": "error", "message": "assistant request is still running"})
                             continue
                     samples = vad_session.get_audio()
+                    vad_timing = vad_session.consume_completed_timing()
                     if samples.size == 0:
                         continue
                     interrupt_event.clear()
                     vad_session.interrupt = False
-                    active_task = asyncio.create_task(run_audio_turn(samples, tts_options=session_tts_options))
+                    active_task = asyncio.create_task(
+                        run_audio_turn(samples, vad_timing=vad_timing, tts_options=session_tts_options)
+                    )
                     continue
 
                 if not isinstance(message, dict):
