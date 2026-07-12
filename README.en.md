@@ -8,6 +8,9 @@ The project currently supports local microphone input, VAD interruption, SenseVo
 
 Demo video: <https://www.bilibili.com/video/BV1nFE36mEmc>
 
+<img width="1438" height="918" alt="Snipaste_2026-07-10_15-58-12" src="https://github.com/user-attachments/assets/f96c9d46-d3b2-4acf-bf73-0888b91b0f55" />
+
+
 ## Overview
 
 - Electron handles the desktop UI, configuration, logs, and local service orchestration.
