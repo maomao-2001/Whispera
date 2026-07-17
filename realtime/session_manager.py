@@ -24,6 +24,11 @@ class ConversationState:
         self.history.append({"role": "assistant", "content": value})
         self._trim()
 
+    def clear(self) -> None:
+        """Reset the short-term conversation context for a fresh dialogue."""
+        self.history = []
+        self.active_request_id = None
+
     def build_messages(self, user_text: str) -> list[dict[str, str]]:
         messages = list(self.history)
         value = str(user_text or "").strip()

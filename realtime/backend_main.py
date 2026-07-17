@@ -849,6 +849,7 @@ def create_app(config: RealtimeAppConfig | None = None):
                     "logging.configure",
                     "audio.chunk",
                     "interrupt",
+                    "context.clear",
                     "ping",
                     "session.stop",
                 ],
@@ -986,6 +987,28 @@ def create_app(config: RealtimeAppConfig | None = None):
                             "request_id": message.get("request_id"),
                             "interrupted_request_id": state.active_request_id,
                             "accepted": bool(state.active_request_id),
+                        }
+                    )
+                    continue
+
+                if message_type == "context.clear":
+                    # Interrupt any in-flight turn (LLM/TTS), wait for it to wind
+                    # down, then wipe the short-term conversation context so the
+                    # next turn starts fresh. Long-term memory is left untouched.
+                    interrupt_event.set()
+                    vad_session.interrupt = True
+                    if active_task is not None:
+                        with contextlib.suppress(asyncio.CancelledError, Exception):
+                            await active_task
+                        active_task = None
+                    state.clear()
+                    vad_session.reset()
+                    interrupt_event.clear()
+                    await send_json(
+                        {
+                            "type": "context.cleared",
+                            "session_id": session_id,
+                            "request_id": message.get("request_id"),
                         }
                     )
                     continue

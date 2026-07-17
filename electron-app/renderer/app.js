@@ -5,6 +5,7 @@ const els = {
   pingBtn: document.getElementById("pingBtn"),
   connectBtn: document.getElementById("connectBtn"),
   disconnectBtn: document.getElementById("disconnectBtn"),
+  clearContextBtn: document.getElementById("clearContextBtn"),
   backendState: document.getElementById("backendState"),
   orb: document.getElementById("orb"),
   orbCaption: document.getElementById("orbCaption"),
@@ -477,6 +478,38 @@ function clearConversation() {
   state.currentAssistantMessageId = null;
   state.nextMessageId = 1;
   renderConversation();
+}
+
+function clearContext() {
+  if (state.serviceBusy) {
+    return;
+  }
+
+  // If a turn is mid-flight (TTS playback or LLM reply), stop local playback
+  // and interrupt the backend before wiping the context.
+  if (hasActiveTurn()) {
+    stopPlaybackQueue();
+    sendRealtimeJson({ type: "interrupt", request_id: `interrupt-${Date.now()}` });
+  }
+
+  // Tell the backend to drop the short-term conversation context. Long-term
+  // memory is intentionally left untouched.
+  const contextCleared = sendRealtimeJson({
+    type: "context.clear",
+    request_id: `clear-${Date.now()}`
+  });
+
+  clearConversation();
+
+  if (isVoiceSessionActive()) {
+    setTurnPhase("listening");
+    setOrbMode("listening", "Conversation cleared. Ready for a new turn.");
+  } else {
+    setTurnPhase("idle");
+    setOrbMode(getReadyOrbMode(), "Conversation cleared. Ready for a new turn.");
+  }
+
+  appendLog("context.clear_requested", { sent_to_backend: contextCleared });
 }
 
 function beginConversationMessage(role, text = "", stageText = "Idle", stageTone = null) {
@@ -1279,6 +1312,7 @@ function setConnected(connected) {
   const voiceConnected = connected && state.sessionMode === "voice";
   els.connectBtn.disabled = voiceConnected || state.serviceBusy;
   els.disconnectBtn.disabled = (!connected && !state.serviceBusy) || state.serviceBusy;
+  els.clearContextBtn.disabled = !connected || state.serviceBusy;
   updateTextComposerState();
 }
 
@@ -1961,6 +1995,7 @@ els.closeBtn.addEventListener("click", () => window.desktopWindow.close());
 els.detectResourcesBtn.addEventListener("click", () => void detectResources());
 els.connectBtn.addEventListener("click", connectRealtime);
 els.disconnectBtn.addEventListener("click", () => void disconnectRealtime());
+els.clearContextBtn.addEventListener("click", clearContext);
 els.logCaptureToggle?.addEventListener("change", (event) => {
   void setVoiceLoggingEnabled(event.target.checked);
 });
